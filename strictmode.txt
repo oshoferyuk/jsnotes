@@ -1,0 +1,569 @@
+JavaScript Strict Mode
+The fifth edition of the ECMAScript specification introduced Strict Mode. 
+Strict Mode imposes a layer of constraint on JavaScript – intended to protect you from the more perilous aspects 
+of the language.
+
+While researching this article I wrote 38 tests covering all the Strict Mode rules as defined in the ES5 specification. 
+You can see how your favorite browser shapes up by clicking here.
+
+
+
+The code for each test is reproduced at the end of the article as an aid to understanding the specification.
+You can also run the tests manually by copying and pasting the source into the console. 
+The full source code is on my github repo.
+
+Firefox 4 and IE10 (preview 1) already fully support Strict Mode, and Chrome 12 is nearly there. 
+Strict Mode is here to stay – let’s dive in…
+
+How do I invoke Strict Mode?
+
+Adding "use strict" as the first statement
+
+
+"use strict"; or adding a “use strict” statement to the first line
+012; //Octal literal throws a SyntaxError in Strict Mode
+ 
+
+012; //No Error (Strict Mode not enforced globally)
+function foo() {
+    "use strict";
+    x=3; //Strict Mode will throw an error for implicit globals
+}
+foo(); //ReferenceError (Strict Mode is enforced for function foo)
+ 
+
+@kangax pointed out that "use strict" can appear anywhere within a leading set of string literal statements 
+– presumably to allow future directives to act in parallel.
+ 
+
+ 
+ 
+ - Do functions reflect the Strict Mode directives of their outer functions?
+
+Inner functions defined within an outer function that carries the “use strict” directive, 
+will also be subject to Strict Mode…
+
+var wrapper = function(fn) {
+  'use strict';
+  var deleteNonConfigurable = function () {
+    var obj = {};
+    Object.defineProperty(obj, "name", {
+      configurable: false
+    });
+    delete obj.name; //Will throw TypeError in Strict Mode
+  }
+  return deleteNonConfigurable;
+}
+ 
+wrapper()(); //TypeError (Strict Mode enforced)
+ 
+However it is important to note, Strict Mode is not enforced on non-strict functions that are invoked inside 
+the body of a strict function (either because they were passed as arguments or invoked using call or apply)…
+
+
+var test = function(fn) {
+  'use strict';
+  fn();
+}
+ 
+var deleteNonConfigurable = function () {
+  var obj = {};
+  Object.defineProperty(obj, "name", {
+    configurable: false
+  });
+  delete obj.name; //will throw TypeError in Strict Mode
+}
+ 
+test(deleteNonConfigurable); //no error (Strict Mode not enforced)
+ 
+
+ -Why can’t I run global Strict Mode in my browser console?
+
+When running code in firebug and other browser consoles, an initial “use strict” (outside a function) 
+has no effect. This is because most console runners wrap all code in an eval call – 
+so your “use strict” is no longer the first statement. 
+A partial workaround is to wrap your code in a self invoking function starting with “use strict” 
+(but even then, I found enforcement of Strict Mode within the console to be pretty flakey – 
+particularly when using webkit developer tools – better to test your code in a web page):
+
+(function() {
+    "use strict";
+    var a;
+    var b;
+    function bar() {
+        x = 5; //Strict Mode will throw an error for implicit globals
+    }
+    bar(); //ReferenceError (Strict Mode is enforced)
+})();
+ 
+
+-What happens if my browser doesn’t support Strict Mode?
+
+Nothing. The “use strict” directive is simply a string statement that will be ignored by JavaScript engines 
+that don’t support Strict Mode. This allows safe cross-browser use of Strict Mode syntax while ensuring built-in 
+forward compatibility with browsers that might support Strict Mode in the future.
+
+What are the rules of Strict Mode?
+
+The restrictions defined by the Strict Mode specification encompass both load-time and runtime behaviors. 
+Here’s a brief overview (each rule is covered in detail, with an example, in the next section):
+
+
+*******Syntax Errors********
+
+In many cases, Strict Mode will prevent ambiguous or allegedly misleading code from even loading. 
+Octal literals, duplicate property names, incorrect usage of delete and attempts to do anything dodgy(chancy)
+with the eval and arguments keywords will throw a SyntaxError as will any use of the with statement 
+
+
+The ‘this’ value
+
+In Strict Mode the value of this will not be auto-coerced to an object. 
+This is probably the most interesting part of Strict Mode and the one that is likely to have the most significant
+impact on developers. Most notably, if the first argument to call or apply is null or undefined, 
+the this value of the invoked function will not be converted to the global object.
+
+
+Implicit globals
+
+Not many folks will argue against this one. Creation of implicit globals is almost always a mistake. 
+in Strict Mode you’ll get a ReferenceError. That’ll teach you??
+
+arguments.caller and arguments.callee
+
+These useful properties are frowned upon in Strict Mode. Definitely controversial. 
+The lesser used function.arguments and function.caller properties are also banned.
+
+Object property definition violations
+
+Attempting to perform an update on a property when its property definition defines 
+otherwise will throw a TypeError in Strict Mode.
+
+The Tests
+
+Here is the full source code from my Strict Mode tests. 
+Each set of tests is preempted by a comment lifted directly from the ECMAScript specification being tested. 
+This version of the source is set to run in “console mode” – 
+meaning it can be copied and pasted into a developer console and run as is. 
+The same source run in “HTML mode” is used to generate the visual test page 
+that I introduced at the top of the article. 
+
+
+(function() {
+ 
+  ////////////////////////////////
+  //TEST UTILS...
+  ////////////////////////////////
+ 
+  var HTML_MODE = 0;
+  var CONSOLE_MODE = 1;
+ 
+  var mode = CONSOLE_MODE;
+ 
+  var banner = document.getElementById('banner');
+  var currentTestWidget;
+ 
+  var testsPassed = 0;
+  var totalTests = 0;
+ 
+  window.console = window.console || {log:alert};
+ 
+  function testException(testName, code, expectedError) {
+      'use strict';
+      startTest(testName);
+      try {
+          expectedError == SyntaxError ? eval(code) : code();
+          finishTest(false);
+      } catch (e) {
+          (e instanceof expectedError) ? finishTest(true) : finishTest(false);
+      }
+  }
+ 
+  function testValue(testName, fn, expectedValue, options) {
+      'use strict';
+      options = options || {};
+      startTest(testName);
+      var result = (fn.apply(options.ctx, options.args || []) === expectedValue);
+      finishTest(result);
+  }
+ 
+  function startTest(testName) {
+    if (mode == CONSOLE_MODE) {
+      console.log("testing..." + testName);
+    } else {
+      this.currentWidget = document.createElement('DIV');
+      this.currentWidget.innerHTML = testName;
+      document.body.appendChild(this.currentWidget);
+    }
+  }
+ 
+  function finishTest(passed) {
+    totalTests++;
+    passed && testsPassed++;
+    var result = passed ? "passed" : "failed";
+    if (mode == CONSOLE_MODE) {
+      console.log(result);
+    } else {
+      this.currentWidget.className = result;
+    }
+  }
+ 
+  function startAll() {
+    if (mode == HTML_MODE) {
+      banner.innerHTML += [":", browser.browserName, browser.fullVersion].join(' ');
+    }
+  }
+ 
+  function finishAll() {
+    var result = ["","(", testsPassed, "out of", totalTests, "tests passed", ")"].join(' ');
+    if (mode == HTML_MODE) {
+      banner.innerHTML += result;
+    } else if (mode == CONSOLE_MODE) {
+      console.log(result);
+    }
+  }
+ 
+  ////////////////////////////////
+  //THE TESTS...
+  ////////////////////////////////
+ 
+  startAll();
+ 
+  // A conforming implementation, when processing strict mode code, may not extend the
+  //syntax of NumericLiteral (7.8.3) to include OctalIntegerLiteral as described in B.1.1.
+  testException("no octal literals", '012', SyntaxError);
+ 
+  // A conforming implementation, when processing strict mode code (see 10.1.1), may not
+  //extend the syntax of EscapeSequence to include OctalEscapeSequence as described in B.1.2.
+  testException("no octal escape sequence", '"\\012"', SyntaxError);
+ 
+  // Assignment to an undeclared identifier or otherwise unresolvable reference does not
+  //create a property in the global object. When a simple assignment occurs within strict
+  //mode code, its LeftHandSide must not evaluate to an unresolvable Reference. If it does
+  //a ReferenceError exception is thrown (8.7.2).
+  testException(
+    "no implied globals",
+    function () {'use strict'; x = 3;},
+    ReferenceError
+  );
+ 
+  //The LeftHandSide also may not be a reference to a data property with the attribute
+  //value {[[Writable]]:false}, to an accessor property with the attribute value
+  //{[[Set]]:undefined}, nor to a non-existent property of an object whose [[Extensible]]
+  //internal property has the value false. In these cases a TypeError exception is thrown
+  //(11.13.1).
+  var assignToNonWritable = function () {
+      'use strict';
+      var obj = {};
+      Object.defineProperty(obj, "name", {
+          writable: false
+      });
+      obj.name = "octopus";
+  }
+ 
+  testException("can't assign to non-writable properties", assignToNonWritable, TypeError);
+ 
+  var assignWhenSetterUndefined = function () {
+      'use strict';
+      var obj = {};
+      Object.defineProperty(obj, "name", {
+          set: undefined
+      });
+      obj.name = "cuttlefish";
+  }
+ 
+  testException("can't assign when setter undefined", assignWhenSetterUndefined, TypeError);
+ 
+  var assignToNonExtensible = function () {
+      'use strict';
+      var obj = {};
+      Object.preventExtensions(obj);
+      obj.name = "jellyfish";
+  }
+ 
+  testException("can't assign to non extensible", assignToNonExtensible, TypeError);
+ 
+  //The identifier eval or arguments may not appear as the LeftHandSideExpression of an
+  //Assignment operator (11.13) or of a PostfixExpression (11.13) or as the UnaryExpression
+  //operated upon by a Prefix Increment (11.4.4) or a Prefix Decrement (11.4.5) operator.
+  testException("can't assign to eval", "eval=3", SyntaxError);
+  testException("can't assign to arguments", "arguments=3", SyntaxError);
+  testException("can't postfix eval", "eval++", SyntaxError);
+  testException("can't postfix arguments", "arguments++", SyntaxError);
+  testException("can't prefix eval", "++eval", SyntaxError);
+  testException("can't prefix arguments", "++arguments", SyntaxError);
+ 
+  //Arguments objects for strict mode functions define non-configurable accessor properties
+  //named "caller" and "callee" which throw a TypeError exception on access (10.6).
+  testException(
+    "can't use arguments.caller",
+    function () {'use strict'; arguments.caller;},
+    TypeError
+  );
+ 
+  testException(
+    "can't use arguments.callee",
+    function () {'use strict'; arguments.callee},
+    TypeError
+  );
+ 
+  //Arguments objects for strict mode functions do not dynamically share their array indexed
+  //property values with the corresponding formal parameter bindings of their functions. (10.6).
+  var assignToArguments = function (x) {
+    'use strict';
+    arguments[0] = 3;
+    return x;
+  }
+ 
+  testValue(
+    "arguments not bound to formal params",
+    assignToArguments,
+    5,
+    {args: [5]}
+  );
+ 
+  //For strict mode functions, if an arguments object is created the binding of the local
+  //identifier arguments to the arguments object is immutable and hence may not be the
+  //target of an assignment expression. (10.5).
+  var assignToFormalParams = function (x) {
+      'use strict';
+      x = 3;
+      return arguments[0];
+  }
+ 
+  testValue(
+    "arguments object is immutable",
+    assignToFormalParams,
+    5,
+    {args: [5]}
+  );
+ 
+  //It is a SyntaxError if strict mode code contains an ObjectLiteral with more than one
+  //definition of any data property (11.1.5).
+  testException("no duplicate properties", "({a:1, a:2})", SyntaxError);
+ 
+  //It is a SyntaxError if the Identifier "eval" or the Identifier "arguments occurs as the
+  //Identifier in a PropertySetParameterList of a PropertyAssignment that is contained in
+  //strict code or if its FunctionBody is strict code (11.1.5).
+  testException(
+    "eval not allowed in propertySetParameterList",
+    "({set a(eval){ }})",
+    SyntaxError
+  );
+ 
+  testException(
+    "arguments not allowed in propertySetParameterList",
+    "({set a(arguments){ }})",
+    SyntaxError
+  );
+ 
+  //Strict mode eval code cannot instantiate variables or functions in the variable environment
+  //of the caller to eval. Instead, a new variable environment is created and that environment
+  //is used for declaration binding instantiation for the eval code (10.4.2).
+  testException(
+    "eval cannot create var in calling context",
+    function () {'use strict'; eval('var a = 99'); a},
+    ReferenceError
+  );
+ 
+  //If this is evaluated within strict mode code, then the this value is not coerced to an object.
+  //A this value of null or undefined is not converted to the global object and primitive values
+  //are not converted to wrapper objects. The this value passed via a function call (including
+  //calls made using Function.prototype.apply and Function.prototype.call) do not coerce the
+  //passed this value to an object (10.4.3, 11.1.1, 15.3.4.3, 15.3.4.4).
+  var getThis = function () {
+      'use strict';
+      return this;
+  }
+ 
+  testValue(
+    "this is not coerced",
+    getThis,
+    4,
+    {ctx: 4}
+  );
+ 
+  testValue(
+    "no global coercion for null",
+    getThis,
+    null,
+    {ctx: null}
+  );
+ 
+  //When a delete operator occurs within strict mode code, a SyntaxError is thrown if its
+  //UnaryExpression is a direct reference to a variable, function argument, or function name
+  //(11.4.1).
+  testException("can't delete variable directly", "var a = 3; delete a", SyntaxError);
+  testException("can't delete argument", "function(a) {delete a}", SyntaxError);
+  testException("can't delete function by name", "function fn() {}; delete fn", SyntaxError);
+ 
+  //When a delete operator occurs within strict mode code, a TypeError is thrown if the
+  //property to be deleted has the attribute { [[Configurable]]:false } (11.4.1).
+  var deleteNonConfigurable = function () {
+      'use strict';
+      var obj = {};
+      Object.defineProperty(obj, "name", {
+          configurable: false
+      });
+      delete obj.name;
+  }
+ 
+  testException("error when deleting non configurable", deleteNonConfigurable, TypeError);
+ 
+  //It is a SyntaxError if a VariableDeclaration or VariableDeclarationNoIn occurs within
+  //strict code and its Identifier is eval or arguments (12.2.1).
+  testException("can't use eval as var name", "var eval;", SyntaxError);
+  testException("can't use arguments as var name", "var arguments;", SyntaxError);
+ 
+  //Strict mode code may not include a WithStatement. The occurrence of a WithStatement
+  //in such a context is an SyntaxError (12.10).
+  testException("can't use with", "with (Math) {round(sqrt(56.67))}", SyntaxError);
+ 
+  //It is a SyntaxError if a TryStatement with a Catch occurs within strict code and the
+  //Identifier of the Catch production is eval or arguments (12.14.1)
+  testException("can't use eval as catch id", "try {'cake'} catch(eval) {}", SyntaxError);
+  testException("can't use arguments as catch id", "try {'cake'} catch(arguments) {}", SyntaxError);
+ 
+  //It is a SyntaxError if the identifier eval or arguments appears within a
+  //FormalParameterList of a strict mode FunctionDeclaration or FunctionExpression (13.1)
+  testException("can't use eval as formal param", "function(eval) {}", SyntaxError);
+  testException("can't use arguments as formal param", "function(arguments) {}", SyntaxError);
+ 
+  //A strict mode function may not have two or more formal parameters that have the same
+  //name. An attempt to create such a function using a FunctionDeclaration, FunctionExpression,
+  //or Function constructor is a SyntaxError (13.1, 15.3.2).
+  testException("can't duplicate formal params", "function(me, me, me) {}", SyntaxError);
+ 
+  //An implementation may not associate special meanings within strict mode functions to
+  //properties named caller or arguments of function instances. ECMAScript code may not
+  //create or modify properties with these names on function objects that correspond to
+  //strict mode functions (13.2).
+  testException(
+    "can't use caller obj of function",
+    function () {'use strict'; (function () {}).caller},
+    TypeError
+  );
+ 
+  //It is a SyntaxError to use within strict mode code the identifiers eval or arguments as
+  //the Identifier of a FunctionDeclaration or FunctionExpression or as a formal parameter
+  //name (13.1). Attempting to dynamically define such a strict mode function using the
+  //Function constructor (15.3.2) will throw a SyntaxError exception.
+  testException("can't use eval as function name", "function eval() {}", SyntaxError);
+  testException("can't use arguments as function name", "function arguments() {}", SyntaxError);
+ 
+  var functionConstructorStr = "new Function('eval', 'use strict')";
+  testException("can't use eval as param name via constructor", functionConstructorStr, SyntaxError);
+ 
+  finishAll();
+ 
+})();
+ 
+Wrap up
+
+Whether restricting access to the language makes for better developers is questionable – 
+but lets save that debate for another time. In its defense, Strict Mode is a nice compromise between 
+a complete language change (which would have broken backwards-compatibility) 
+and doing nothing (which would have raised the hackles of those who insist that the more egregious parts 
+of the language must be phased out). 
+If nothing else, Strict Mode is meat and drink for those of us obsessed with the nuances of this fascinating 
+language. Enjoy!
+
+Further Reading
+
+ECMA-262 5th Edition: The Strict Mode of ECMAScript
+
+
+-Still can’t understand why strict mode won’t allow arguments.callee and arguments.caller – 
+what was the reason behind that decision?
+
+Reply
+arguments.callee and arguments.caller are not that good for performance, 
+and there will be better ways to use them in a later version of ECMAScript. 
+If you need to call an anonymous function, just give it a name.
+
+Respect to argument.callee, 
+in my opinion the main reason is that conceptually it is not an argument and there are alternatives.
+
+May 3, 2011 at 12:56
+Is there any way of making a recursive anonymous function without arguments.callee, 
+or would I have to name a function to make it be recursive?
+Reply
+
+Without argument.calle the only option for create a recursive anonymous function is to use the Y combinator.
+I should have known about the YC. I’ve taken a whole class about PL and YC at Northeastern.
+
+It is definitely nice to have a reference to the function inside of itself. I wonder if it will be moved someplace else. I like writing lispy JavaScript code.:)
+joseanpg
+May 4, 2011 at 02:01
+“Lispy” way, this is the approach which must be followed from now on: if you want recursion you must choose the name, no more pseudo-keywords.
+joseanpg
+May 3, 2011 at 14:25
+You can always create a recursive named function expression. You must replace
+
+1
+(function(pars) { ... arguments.calle(args') ...})(args)
+by
+
+1
+(function imfun(pars) { ... imfun(args') ...})(args)
+Reply
+joseanpg
+May 3, 2011 at 14:45
+The imfun->function_object binding is private in the environment closured by the function_object, namely it is not accessible from the enclosing lexical scope.
+Mikael Soderstrom
+May 3, 2011 at 13:51
+@Gary
+You will have to name the anonymous function. It?s just a few more chars anyway.:)
+
+Example:
+(function getFive(number) {
+if (number == 5)
+{
+return 'It?s five...'
+}
+return getFive(number++);
+})(0)
+Reply
+Pingback: links for 2011-05-03 « sonofbluerobot
+nicity
+May 5, 2011 at 05:09
+Using strict mode also allows more advanced problem reporting during JavaScript editing, e.g. WebStorm will highlight as error reference to undefined global function.
+Reply
+Pingback: Linkdump for May 8th | found drama
+julien
+May 15, 2011 at 01:27
+well, here are my results with chrome : http://i.imgur.com/BDcRC.png
+Reply
+Angus Croll
+May 15, 2011 at 11:38
+So chrome 13 looks like its fully compliant. Nice
+Reply
+Iswandi Soejono
+May 16, 2011 at 23:02
+I like to see people learning by experimenting with stuff like this. I hope your studies are successful and you have a good career in Javascript,
+Reply
+Saeed Neamati
+May 24, 2011 at 02:45
+Really cool man. I didn’t know about Strict Mode before reading your article.
+I remember days in which we could use Strict Option in VB.NET (I’m a C# guy now, but I started with VB), and my personal idea is that this is a good feature, because it enforces syntax checks and prevents unintended errors. Just another help. Also the way it’s defined is so interesting:
+“use strict”
+Plain old string configuration. I love it.
+Anyway, I’ve also initiated a new website called Thought Results and there, I’ll post simplified tutorials on CSS (specially 3), HTML (specially 5), and JavaScript (jQuery-based).
+How do you see the errors throw by the JavaScript interpreter when using “use strict”? In Chrome if I enable the Javascript console and run your test page it does not show any errors for your test cases. Shouldn’t I see warnings for all the cases you are doing things not allowed by strict mode? I am using strict mode because I want to be warned of stupid errors I have made in my code.
+Reply
+Massimo Broflovski
+August 19, 2012 at 16:21
+Dear Angus, thanks for you lovely work.
+Reading ecma specs i found a case that i don’t see covered by your tests. What’s strange is that it’s not throwing any error in any browser (Chrome / FF / IE). This makes me think it’s ME in error, but i don’t see how or where. The code supposed to throw an error is:
+
+(function f(x){ “use strict”; x.y = 10; })(”)
+
+Where it tries to create property “y” for the string parameter i’m passing, it should be executing the algorithm you find in specifications http://is.gd/ecmascript (par. 8.7.2)
+If i’m right, it is
+1) creating this primitive string (empty)
+2) coercing it into a temporary String object
+3) creating a new property into the object
+
+This is perfectly stated in the specs as “this is a request to create an own property on the transient object O”.
+In non-strict mode this is supposed to be ignored and return.
+In strict mode i read it is supposed to throw a TypeError. It does’nt.
